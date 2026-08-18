@@ -1,0 +1,2 @@
+g++ -O3 -Iinclude src/main.cpp -o output/main.exe
+.\output\main.exe | Out-File -FilePath output\image.ppm -Encoding ascii
