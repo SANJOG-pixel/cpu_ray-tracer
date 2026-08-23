@@ -3,6 +3,7 @@
 #include "hitable.h"
 #include"ray.h"
 #include<cstdlib>
+#include<cmath>
 inline vec reflect(const vec&v ,const vec& n){
     return v - 2.0 * dot(v,n) * n ;  
 }
@@ -37,6 +38,48 @@ vec random_int_unitSphere(){
     return p;
 }
 
+inline float noise_hash(float x , float y , float z){
+    float n = sin( x*12.9898f + y*78.233f + z*37.719f ) * 43758.5453f;
+    return (n - floor(n) );
+}
+// Value Noise 
+inline float smooth_noise(const vec& p){
+    int xi = floor(p.x());
+    int yi = floor(p.y());
+    int zi = floor(p.z());
+
+    // relative position within the cube
+    float xr = p.x() - xi;
+    float yr = p.y() - yi;
+    float zr = p.z() - zi;
+
+    // fade function - 3t^2 - 2t^3
+    // it has smooth start and end (almost zero slope)
+    float u = xr*xr*(3-2*xr);
+    float v = yr*yr*(3-2*yr);
+    float w = zr*zr*(3-2*zr);
+
+    float c000 = noise_hash(xi,yi,zi);
+    float c100 = noise_hash(xi+1,yi,zi);
+    float c010 = noise_hash(xi,yi+1,zi);
+    float c110 = noise_hash(xi+1,yi+1,zi);
+    float c001 = noise_hash(xi,yi,zi+1);
+    float c101 = noise_hash(xi+1,yi,zi+1);
+    float c011 = noise_hash(xi,yi+1,zi+1);
+    float c111 = noise_hash(xi+1,yi+1,zi+1);
+
+    float x00 = c000*(1-u) + c100*u;
+    float x10 = c010*(1-u) + c110*u;
+    float x01 = c001*(1-u) + c101*u;
+    float x11 = c011*(1-u) + c111*u;
+
+    float y0 = x00*(1-v) + x10*v;
+    float y1 = x01*(1-v) + x11*v;
+
+    return y0*(1-w) + y1*w;
+}
+
+
 class material{
     public:
         virtual bool scatter(const ray& r_in , const hit_record& rec , vec& attenuation ,ray& scattered)const  = 0 ;
@@ -52,6 +95,27 @@ class lambertian : public material{
             attenuation = albedo; // the color of the material
             return true;
         }  
+};
+class noise_lambertian : public material{
+public :
+    vec base_color;
+    // both scale and variations are within 0 and 1 .
+    float scale ;   // controls how large cloudy patches : smaller value means larger patch
+    float variations; // variation strength : larger value means stronger
+
+    noise_lambertian(const vec& c , float s , float v) : base_color(c) , scale(s) , variations(v) {}
+
+    virtual bool scatter(const ray& r_in , const hit_record& rec , vec& attenuation ,ray& scattered) const{
+        float noise = smooth_noise(rec.P * scale);
+
+        float brightness = 1.0f - variations + 2.0f * variations * noise ;
+        attenuation = base_color * brightness;
+
+        vec target = rec.P + rec.N + random_int_unitSphere();
+        scattered = ray(rec.P , target - rec.P);
+
+        return true;
+    }
 };
 class metal: public material {
     public :
@@ -124,6 +188,7 @@ public:
 };
 
 class glowing_metal : public material{
+public:
     vec emit_color , albedo ;
     float fuzz;
     glowing_metal(const vec& e , const vec& a , float f) : emit_color(e) , albedo(a) ,fuzz(f) {}
